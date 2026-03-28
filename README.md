@@ -61,6 +61,16 @@ Security was implemented through IAM and layered Security Groups.
 The `events.php` service drives runtime integration and data persistence.
 
 1. **API Source:** Ticketmaster Discovery API selected for structured event metadata (title, venue, date, poster URL).
+
+#### API Justification: Ticketmaster vs. Alternatives
+
+Ticketmaster Discovery API was selected over alternatives such as Eventbrite for four practical reasons:
+
+1. **Simpler integration model:** API key based access enabled straightforward server-side GET requests from private EC2 instances, avoiding additional OAuth complexity for public event reads.
+2. **Consistent response schema:** Event name, venue, date, and image fields are clearly structured, which reduced parsing complexity in `events.php` and improved S3 upload reliability.
+3. **Demo-friendly usage limits:** The free-tier rate profile was suitable for student-scale traffic and testing, lowering the risk of 429 throttling during evaluation.
+4. **Built-in media metadata:** Event poster URLs are included directly in responses, satisfying the assignment media requirement without a separate image pipeline.
+
 2. **Automated Persistence Workflow:**
    - Fetches API JSON via server-side `curl`.
    - Writes timestamped JSON records to S3 (for example: `university_events_2026-03-28_01-36-54.json`).
