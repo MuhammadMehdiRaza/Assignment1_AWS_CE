@@ -1,38 +1,62 @@
 <?php
 
-// 1. SETTINGS - Assignment Requirements
+// 1. SETTINGS - Use environment variables for sensitive values
+$apiKey = getenv('UNI_EVENT_API_KEY');
+$bucketName = getenv('UNI_EVENT_BUCKET') ?: 'unievent-media-assignment1-2026';
+$timestamp = date('Y-m-d_H-i-s');
 
-$apiKey = "JOwFCuAw6oo8QjeaSDA9kBXNwHqvecVN";
+if (!$apiKey) {
+    http_response_code(500);
+    echo '<html><body style="font-family: sans-serif; padding: 40px; background-color: #f4f7f6;">';
+    echo '<h2 style="color: #c0392b;">Configuration Error</h2>';
+    echo '<p>Missing required environment variable: <b>UNI_EVENT_API_KEY</b></p>';
+    echo '</body></html>';
+    exit;
+}
 
-$bucketName = "unievent-media-assignment1-2026";
+$query = http_build_query([
+    'classificationName' => 'university',
+    'apikey' => $apiKey,
+]);
+$apiUrl = "https://app.ticketmaster.com/discovery/v2/events.json?$query";
 
-$apiUrl = "https://app.ticketmaster.com/discovery/v2/events.json?classificationName=university&apikey=" . $apiKey;
+// 2. FETCH DATA - From Open API (Ticketmaster) using cURL with timeouts
+$ch = curl_init($apiUrl);
+curl_setopt_array($ch, [
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_TIMEOUT => 15,
+    CURLOPT_CONNECTTIMEOUT => 5,
+    CURLOPT_SSL_VERIFYPEER => true,
+    CURLOPT_SSL_VERIFYHOST => 2,
+]);
 
+$jsonResponse = curl_exec($ch);
+$curlError = curl_error($ch);
+$httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
 
-
-// 2. FETCH DATA - From Open API (Ticketmaster)
-
-$jsonResponse = file_get_contents($apiUrl);
+if ($jsonResponse === false || $httpCode >= 400) {
+    http_response_code(502);
+    echo '<html><body style="font-family: sans-serif; padding: 40px; background-color: #f4f7f6;">';
+    echo '<h2 style="color: #c0392b;">API Fetch Failed</h2>';
+    echo '<p>Unable to fetch events from Ticketmaster at this time.</p>';
+    if ($curlError) {
+        echo '<p><small>Detail: ' . htmlspecialchars($curlError, ENT_QUOTES, 'UTF-8') . '</small></p>';
+    }
+    echo '</body></html>';
+    exit;
+}
 
 $data = json_decode($jsonResponse, true);
 
-
-
 // 3. AUTOMATION - Store retrieved data persistently in S3
-
-// This creates a unique filename with a timestamp
-
-$timestamp = date("Y-m-d_H-i-s");
-
-$localFile = "/tmp/university_events_$timestamp.json";
-
+$tempDir = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR);
+$localFile = $tempDir . DIRECTORY_SEPARATOR . "university_events_$timestamp.json";
 file_put_contents($localFile, $jsonResponse);
 
-
-
-// Use the IAM Role (UniEvent-S3-Role) to upload the file to S3
-
-exec("aws s3 cp $localFile s3://$bucketName/fetched_data/university_events_$timestamp.json 2>&1", $output, $returnCode);
+$sourceArg = escapeshellarg($localFile);
+$targetArg = escapeshellarg("s3://$bucketName/fetched_data/university_events_$timestamp.json");
+exec("aws s3 cp $sourceArg $targetArg 2>&1", $output, $returnCode);
 
 
 
@@ -62,19 +86,21 @@ if (isset($data['_embedded']['events'])) {
 
     foreach ($data['_embedded']['events'] as $event) {
 
-        $name = $event['name'];
+        $name = htmlspecialchars($event['name'] ?? 'Untitled Event', ENT_QUOTES, 'UTF-8');
 
-        $date = $event['dates']['start']['localDate'];
+        $date = htmlspecialchars($event['dates']['start']['localDate'] ?? 'TBA', ENT_QUOTES, 'UTF-8');
 
-        $venue = $event['_embedded']['venues'][0]['name'] ?? "Campus Main Hall";
+        $venue = htmlspecialchars($event['_embedded']['venues'][0]['name'] ?? 'Campus Main Hall', ENT_QUOTES, 'UTF-8');
 
-        $img = $event['images'][0]['url']; // Event poster link
+        $img = htmlspecialchars($event['images'][0]['url'] ?? '', ENT_QUOTES, 'UTF-8'); // Event poster link
 
 
 
         echo "<div style='background: white; margin-bottom: 20px; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); display: flex;'>";
 
-        echo "<img src='$img' style='width: 150px; border-radius: 4px; margin-right: 20px;'>";
+        if ($img !== '') {
+            echo "<img src='$img' alt='Event Poster' style='width: 150px; border-radius: 4px; margin-right: 20px;'>";
+        }
 
         echo "<div>";
 
