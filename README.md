@@ -60,7 +60,15 @@ Security was implemented through IAM and layered Security Groups.
 
 The `events.php` service drives runtime integration and data persistence.
 
-1. **API Source:** Ticketmaster Discovery API selected for structured event metadata (title, venue, date, poster URL).
+#### Final Phase: Interactive Portal Implementation
+
+The final implementation extends UniEvent from a read-only event viewer into an interactive portal:
+
+1. **User Registration Simulation:** A front-end registration trigger was added to model student activity enrollment.
+2. **Media Upload Integration:** Students can upload event posters through the portal; uploaded files are written directly to the S3 bucket (`unievent-media-assignment1-2026`) under `student_uploads/`.
+3. **Stateless Backend Execution:** Upload and persistence operations are executed using AWS CLI commands via PHP `exec()`, streaming data from private EC2 instances to S3 and avoiding reliance on long-term local instance storage.
+
+4. **API Source:** Ticketmaster Discovery API selected for structured event metadata (title, venue, date, poster URL).
 
 #### API Justification: Ticketmaster vs. Alternatives
 
@@ -71,11 +79,11 @@ Ticketmaster Discovery API was selected over alternatives such as Eventbrite for
 3. **Demo-friendly usage limits:** The free-tier rate profile was suitable for student-scale traffic and testing, lowering the risk of 429 throttling during evaluation.
 4. **Built-in media metadata:** Event poster URLs are included directly in responses, satisfying the assignment media requirement without a separate image pipeline.
 
-2. **Automated Persistence Workflow:**
+5. **Automated Persistence Workflow:**
    - Fetches API JSON via server-side `curl`.
    - Writes timestamped JSON records to S3 (for example: `university_events_2026-03-28_01-36-54.json`).
-3. **Media Rendering:** Poster URLs are rendered as University Event Posters in the UI.
-4. **Storage Target:** `unievent-media-assignment1-2026` S3 bucket.
+6. **Media Rendering:** Poster URLs are rendered as University Event Posters in the UI.
+7. **Storage Target:** `unievent-media-assignment1-2026` S3 bucket.
 
 ### 6. Verification and Results
 
@@ -83,7 +91,13 @@ Ticketmaster Discovery API was selected over alternatives such as Eventbrite for
 2. **S3 Synchronization:** `output/Picture2.png` validates successful storage of event data to S3.
 3. **End-to-End Integration:** `output/Picture3.png` demonstrates live display of multiple events fetched from the API.
 
-### 7. Repository Structure
+### 7. Final System Validation
+
+**Evidence:** `output/Picture4.png`
+
+Picture 4 confirms successful cloud persistence of both automated API JSON records and student-uploaded media. The visible `student_uploads/` folder in Amazon S3 demonstrates that IAM role permissions and NAT-based outbound routing are correctly enabling write operations from the private web tier to the cloud storage layer.
+
+### 8. Repository Structure
 
 - `scripts/`: Application and automation scripts directory.
 - `scripts/console-to-code.py`: Python utility script included in the scripts folder.
@@ -91,7 +105,7 @@ Ticketmaster Discovery API was selected over alternatives such as Eventbrite for
 - `scripts/setup_webserver.sh`: Apache/PHP bootstrap and web-server provisioning.
 - `scripts/university_events_2026-03-28_01-36-54.json`: Persisted event data snapshot.
 - `output/`: Deployment output and validation artifacts directory.
-- `output/Picture1.png`, `output/Picture2.png`, `output/Picture3.png`: Visual deployment evidence.
+- `output/Picture1.png`, `output/Picture2.png`, `output/Picture3.png`, `output/Picture4.png`: Visual deployment evidence.
 
 ### Conclusion
 
