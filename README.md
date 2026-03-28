@@ -75,10 +75,13 @@ The `events.php` service drives runtime integration and data persistence.
 
 ### 7. Repository Structure
 
+- `scripts/`: Application and automation scripts directory.
+- `scripts/console-to-code.py`: Python utility script included in the scripts folder.
 - `scripts/events.php`: API ingestion, event rendering, and S3 synchronization logic.
 - `scripts/setup_webserver.sh`: Apache/PHP bootstrap and web-server provisioning.
 - `scripts/university_events_2026-03-28_01-36-54.json`: Persisted event data snapshot.
-- `output/Picture1.png`, `output/Picture2.png`, `output/Picture3.png`: Deployment evidence.
+- `output/`: Deployment output and validation artifacts directory.
+- `output/Picture1.png`, `output/Picture2.png`, `output/Picture3.png`: Visual deployment evidence.
 
 ### Conclusion
 
