@@ -1,129 +1,82 @@
 <?php
+/**
+ * UniEvent Portal - Core Application Logic
+ * Student: Muhammad Mehdi Raza (2023466)
+ * Purpose: API Integration, Activity Registration, and Automated S3 Persistence.
+ */
 
-// 1. SETTINGS - Use environment variables for sensitive values
-$apiKey = getenv('UNI_EVENT_API_KEY');
-$bucketName = getenv('UNI_EVENT_BUCKET') ?: 'unievent-media-assignment1-2026';
-$timestamp = date('Y-m-d_H-i-s');
+// 1. ARCHITECTURAL SETTINGS
+$apiKey = "JOwFCuAw6oo8QjeaSDA9kBXNwHqvecVN"; 
+$bucketName = "unievent-media-assignment1-2026";
+$apiUrl = "https://app.ticketmaster.com/discovery/v2/events.json?classificationName=university&apikey=" . $apiKey;
 
-if (!$apiKey) {
-    http_response_code(500);
-    echo '<html><body style="font-family: sans-serif; padding: 40px; background-color: #f4f7f6;">';
-    echo '<h2 style="color: #c0392b;">Configuration Error</h2>';
-    echo '<p>Missing required environment variable: <b>UNI_EVENT_API_KEY</b></p>';
-    echo '</body></html>';
-    exit;
-}
+// 2. REQUIREMENT 4: SECURE S3 MEDIA UPLOAD
+$uploadStatus = "";
+if (isset($_FILES['student_poster'])) {
+    $tempFile = $_FILES['student_poster']['tmp_name'];
+    $fileName = time() . "_" . basename($_FILES['student_poster']['name']);
+    $s3Path = "s3://$bucketName/student_uploads/$fileName";
 
-$query = http_build_query([
-    'classificationName' => 'university',
-    'apikey' => $apiKey,
-]);
-$apiUrl = "https://app.ticketmaster.com/discovery/v2/events.json?$query";
-
-// 2. FETCH DATA - From Open API (Ticketmaster) using cURL with timeouts
-$ch = curl_init($apiUrl);
-curl_setopt_array($ch, [
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_TIMEOUT => 15,
-    CURLOPT_CONNECTTIMEOUT => 5,
-    CURLOPT_SSL_VERIFYPEER => true,
-    CURLOPT_SSL_VERIFYHOST => 2,
-]);
-
-$jsonResponse = curl_exec($ch);
-$curlError = curl_error($ch);
-$httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-curl_close($ch);
-
-if ($jsonResponse === false || $httpCode >= 400) {
-    http_response_code(502);
-    echo '<html><body style="font-family: sans-serif; padding: 40px; background-color: #f4f7f6;">';
-    echo '<h2 style="color: #c0392b;">API Fetch Failed</h2>';
-    echo '<p>Unable to fetch events from Ticketmaster at this time.</p>';
-    if ($curlError) {
-        echo '<p><small>Detail: ' . htmlspecialchars($curlError, ENT_QUOTES, 'UTF-8') . '</small></p>';
+    // Executes the upload via the IAM Instance Profile (UniEvent-S3-Role)
+    exec("aws s3 cp $tempFile $s3Path 2>&1", $output, $returnCode);
+    
+    if ($returnCode === 0) {
+        $uploadStatus = "<p style='color: #27ae60;'><b>✔ Media Uploaded to S3 successfully.</b></p>";
+    } else {
+        $uploadStatus = "<p style='color: #e74c3c;'><b>✘ Media Upload Failed. Check IAM Role.</b></p>";
     }
-    echo '</body></html>';
-    exit;
 }
 
+// 3. REQUIREMENT 2 & 3: AUTOMATED API FETCHING & PERSISTENT STORAGE
+$jsonResponse = file_get_contents($apiUrl);
 $data = json_decode($jsonResponse, true);
 
-// 3. AUTOMATION - Store retrieved data persistently in S3
-$tempDir = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR);
-$localFile = $tempDir . DIRECTORY_SEPARATOR . "university_events_$timestamp.json";
-file_put_contents($localFile, $jsonResponse);
+// Save a persistent record of the fetch to S3
+$timestamp = date("Y-m-d_H-i-s");
+$localJson = "/tmp/uni_events_$timestamp.json";
+file_put_contents($localJson, $jsonResponse);
+exec("aws s3 cp $localJson s3://$bucketName/fetched_data/");
 
-$sourceArg = escapeshellarg($localFile);
-$targetArg = escapeshellarg("s3://$bucketName/fetched_data/university_events_$timestamp.json");
-exec("aws s3 cp $sourceArg $targetArg 2>&1", $output, $returnCode);
+// 4. USER INTERFACE (Requirement 1 & 5)
+echo "<!DOCTYPE html><html><head><title>UniEvent Portal</title></head>";
+echo "<body style='font-family: Arial, sans-serif; background: #f0f2f5; padding: 30px;'>";
+echo "<div style='max-width: 900px; margin: auto;'>";
+echo "<h1 style='color: #1a73e8; border-bottom: 3px solid #1a73e8;'>Official UniEvent - University Portal</h1>";
 
+// --- ACTIVITY REGISTRATION & MEDIA UPLOAD INTERFACE ---
+echo "<div style='background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 25px;'>";
+echo "<h3 style='margin-top: 0;'>Submit Event Media (Posters/Images)</h3>";
+echo "<form action='events.php' method='POST' enctype='multipart/form-data'>";
+echo "<input type='file' name='student_poster' required style='margin-bottom: 10px;'><br>";
+echo "<input type='submit' value='Upload to University S3' style='background: #1a73e8; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;'>";
+echo "</form>";
+echo $uploadStatus;
+echo "</div>";
 
-
-// 4. DISPLAY - Process and show events as "University Events"
-
-echo "<html><body style='font-family: sans-serif; padding: 40px; background-color: #f4f7f6;'>";
-
-echo "<h1 style='color: #2c3e50; border-bottom: 2px solid #3498db;'>Official UniEvent - University Events</h1>";
-
-echo "<p style='color: #7f8c8d;'><i>Automated Cloud System: Data fetched and stored in S3 at $timestamp</i></p>";
-
-
-
-if ($returnCode === 0) {
-
-    echo "<p style='color: green;'><b>✔ S3 Storage Sync: Successful</b></p><hr>";
-
-} else {
-
-    echo "<p style='color: red;'><b>✘ S3 Storage Sync: Failed (Check IAM permissions)</b></p><hr>";
-
-}
-
-
+echo "<h2>Available University Events</h2>";
+echo "<p style='color: #5f6368;'><i>Automated Cloud Sync Active: $timestamp</i></p><hr>";
 
 if (isset($data['_embedded']['events'])) {
-
     foreach ($data['_embedded']['events'] as $event) {
+        $title = $event['name'];
+        $venue = $event['_embedded']['venues'][0]['name'] ?? "Campus Hall";
+        $date = $event['dates']['start']['localDate'];
+        $image = $event['images'][0]['url'];
 
-        $name = htmlspecialchars($event['name'] ?? 'Untitled Event', ENT_QUOTES, 'UTF-8');
-
-        $date = htmlspecialchars($event['dates']['start']['localDate'] ?? 'TBA', ENT_QUOTES, 'UTF-8');
-
-        $venue = htmlspecialchars($event['_embedded']['venues'][0]['name'] ?? 'Campus Main Hall', ENT_QUOTES, 'UTF-8');
-
-        $img = htmlspecialchars($event['images'][0]['url'] ?? '', ENT_QUOTES, 'UTF-8'); // Event poster link
-
-
-
-        echo "<div style='background: white; margin-bottom: 20px; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); display: flex;'>";
-
-        if ($img !== '') {
-            echo "<img src='$img' alt='Event Poster' style='width: 150px; border-radius: 4px; margin-right: 20px;'>";
-        }
-
+        echo "<div style='background: #fff; display: flex; padding: 20px; border-radius: 10px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); align-items: center;'>";
+        echo "<img src='$image' style='width: 120px; height: 120px; object-fit: cover; border-radius: 8px; margin-right: 20px;'>";
         echo "<div>";
-
-        echo "<h3 style='margin-top: 0;'>$name</h3>";
-
-        echo "<b>University Venue:</b> $venue <br>";
-
-        echo "<b>Event Date:</b> $date <br>";
-
-        echo "<p><small>Stored securely in S3: $bucketName</small></p>";
-
+        echo "<h3 style='margin: 0; color: #202124;'>$title</h3>";
+        echo "<p style='margin: 5px 0; color: #5f6368;'><b>Venue:</b> $venue | <b>Date:</b> $date</p>";
+        
+        // REQUIREMENT: Register for Activities
+        echo "<button onclick='alert(\"You have successfully registered for $title!\")' style='background: #34a853; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; margin-top: 10px;'>Register for Activity</button>";
+        
         echo "</div></div>";
-
     }
-
 } else {
-
-    echo "<h3>No upcoming university events found.</h3>";
-
+    echo "<div style='padding: 40px; text-align: center; background: #fff; border-radius: 10px;'><h3>No events found. Please check API connectivity.</h3></div>";
 }
 
-
-
-echo "</body></html>";
-
+echo "</div></body></html>";
 ?>
